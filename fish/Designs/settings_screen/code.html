@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NEPSE Fisher Settings</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#2b4e69",
+                        "deep-water": "#323E48",
+                        "electric-teal": "#14FFEC",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#15191e",
+                        "card-dark": "#1e2329",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom Toggle Switch Colors for specific requirement */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #14FFEC;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #14FFEC;
+        }
+        
+        /* Hide scrollbar for clean look */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="font-display bg-background-light dark:bg-background-dark text-deep-water dark:text-gray-200 antialiased overflow-x-hidden">
+<div class="relative flex h-full min-h-screen w-full flex-col max-w-md mx-auto bg-background-light dark:bg-background-dark pb-10">
+<!-- Header -->
+<div class="sticky top-0 z-50 flex items-center bg-background-light/90 dark:bg-background-dark/90 backdrop-blur-md p-4 justify-between border-b border-gray-200/50 dark:border-gray-800/50">
+<button class="flex items-center text-primary dark:text-gray-400 active:opacity-70 transition-opacity">
+<span class="material-symbols-outlined" style="font-size: 28px;">chevron_left</span>
+<span class="text-base font-normal -ml-1">Back</span>
+</button>
+<h2 class="text-deep-water dark:text-white text-[17px] font-semibold tracking-[-0.015em] absolute left-1/2 -translate-x-1/2">Settings</h2>
+<div class="w-12"></div> <!-- Spacer for visual balance -->
+</div>
+<!-- Content Scroll Area -->
+<div class="flex-1 px-4 pt-4 flex flex-col gap-6">
+<!-- Group 1: Notifications -->
+<section>
+<h3 class="text-[#6c777f] dark:text-gray-500 text-[13px] font-medium leading-normal pl-4 pb-2 uppercase tracking-wide">Preferences</h3>
+<div class="bg-white dark:bg-card-dark rounded-xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] border border-gray-100 dark:border-gray-800">
+<!-- Row 1 -->
+<div class="flex items-center justify-between px-4 py-3 min-h-[52px] active:bg-gray-50 dark:active:bg-gray-800 transition-colors">
+<span class="text-deep-water dark:text-gray-100 text-[16px] font-normal flex-1">Push Notifications</span>
+<div class="shrink-0">
+<label class="relative flex h-[31px] w-[51px] cursor-pointer items-center rounded-full border-none bg-[#E9E9EA] dark:bg-gray-600 p-0.5 has-[:checked]:justify-end has-[:checked]:bg-electric-teal transition-colors duration-200">
+<div class="h-[27px] w-[27px] rounded-full bg-white shadow-sm transition-all"></div>
+<input checked="" class="invisible absolute" type="checkbox"/>
+</label>
+</div>
+</div>
+<div class="h-px bg-gray-100 dark:bg-gray-700 mx-4"></div>
+<!-- Row 2 -->
+<div class="flex items-center justify-between px-4 py-3 min-h-[52px] active:bg-gray-50 dark:active:bg-gray-800 transition-colors">
+<span class="text-deep-water dark:text-gray-100 text-[16px] font-normal flex-1">Price Alerts</span>
+<div class="shrink-0">
+<label class="relative flex h-[31px] w-[51px] cursor-pointer items-center rounded-full border-none bg-[#E9E9EA] dark:bg-gray-600 p-0.5 has-[:checked]:justify-end has-[:checked]:bg-electric-teal transition-colors duration-200">
+<div class="h-[27px] w-[27px] rounded-full bg-white shadow-sm transition-all"></div>
+<input checked="" class="invisible absolute" type="checkbox"/>
+</label>
+</div>
+</div>
+<div class="h-px bg-gray-100 dark:bg-gray-700 mx-4"></div>
+<!-- Row 3 -->
+<div class="flex items-center justify-between px-4 py-3 min-h-[52px] active:bg-gray-50 dark:active:bg-gray-800 transition-colors">
+<span class="text-deep-water dark:text-gray-100 text-[16px] font-normal flex-1">Signal Updates</span>
+<div class="shrink-0">
+<label class="relative flex h-[31px] w-[51px] cursor-pointer items-center rounded-full border-none bg-[#E9E9EA] dark:bg-gray-600 p-0.5 has-[:checked]:justify-end has-[:checked]:bg-electric-teal transition-colors duration-200">
+<div class="h-[27px] w-[27px] rounded-full bg-white shadow-sm transition-all"></div>
+<input class="invisible absolute" type="checkbox"/>
+</label>
+</div>
+</div>
+</div>
+</section>
+<!-- Group 2: Market Data -->
+<section>
+<h3 class="text-[#6c777f] dark:text-gray-500 text-[13px] font-medium leading-normal pl-4 pb-2 uppercase tracking-wide">Market Data</h3>
+<div class="bg-white dark:bg-card-dark rounded-xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] border border-gray-100 dark:border-gray-800">
+<!-- Row 1 -->
+<div class="flex items-center justify-between px-4 py-3 min-h-[52px] active:bg-gray-50 dark:active:bg-gray-800 transition-colors">
+<span class="text-deep-water dark:text-gray-100 text-[16px] font-normal flex-1">Auto-Refresh</span>
+<div class="shrink-0">
+<label class="relative flex h-[31px] w-[51px] cursor-pointer items-center rounded-full border-none bg-[#E9E9EA] dark:bg-gray-600 p-0.5 has-[:checked]:justify-end has-[:checked]:bg-electric-teal transition-colors duration-200">
+<div class="h-[27px] w-[27px] rounded-full bg-white shadow-sm transition-all"></div>
+<input checked="" class="invisible absolute" type="checkbox"/>
+</label>
+</div>
+</div>
+<div class="h-px bg-gray-100 dark:bg-gray-700 mx-4"></div>
+<!-- Row 2 -->
+<div class="flex items-center justify-between px-4 py-3 min-h-[52px] cursor-pointer active:bg-gray-50 dark:active:bg-gray-800 transition-colors group">
+<span class="text-deep-water dark:text-gray-100 text-[16px] font-normal flex-1">Refresh Interval</span>
+<div class="flex items-center gap-2">
+<span class="text-[#8c96a0] dark:text-gray-400 text-[16px]">10s</span>
+<span class="material-symbols-outlined text-[#c5c9cd] group-hover:text-[#8c96a0] transition-colors" style="font-size: 20px;">chevron_right</span>
+</div>
+</div>
+<div class="h-px bg-gray-100 dark:bg-gray-700 mx-4"></div>
+<!-- Row 3 -->
+<div class="flex items-center justify-between px-4 py-3 min-h-[52px] active:bg-gray-50 dark:active:bg-gray-800 transition-colors">
+<div class="flex flex-col flex-1 pr-4">
+<span class="text-deep-water dark:text-gray-100 text-[16px] font-normal">Data Saver Mode</span>
+<span class="text-[#8c96a0] dark:text-gray-500 text-[13px] font-normal mt-0.5">Updates only on WiFi</span>
+</div>
+<div class="shrink-0 self-center">
+<label class="relative flex h-[31px] w-[51px] cursor-pointer items-center rounded-full border-none bg-[#E9E9EA] dark:bg-gray-600 p-0.5 has-[:checked]:justify-end has-[:checked]:bg-electric-teal transition-colors duration-200">
+<div class="h-[27px] w-[27px] rounded-full bg-white shadow-sm transition-all"></div>
+<input class="invisible absolute" type="checkbox"/>
+</label>
+</div>
+</div>
+</div>
+</section>
+<!-- Group 3: Portfolio Settings -->
+<section>
+<h3 class="text-[#6c777f] dark:text-gray-500 text-[13px] font-medium leading-normal pl-4 pb-2 uppercase tracking-wide">Portfolio Settings</h3>
+<div class="bg-white dark:bg-card-dark rounded-xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)] border border-gray-100 dark:border-gray-800">
+<!-- Row 1 -->
+<div class="flex items-center justify-between px-4 py-3 min-h-[52px] cursor-pointer active:bg-gray-50 dark:active:bg-gray-800 transition-colors group">
+<span class="text-deep-water dark:text-gray-100 text-[16px] font-normal flex-1">Default Broker</span>
+<div class="flex items-center gap-2">
+<span class="text-[#8c96a0] dark:text-gray-400 text-[16px]">Broker 58</span>
+<span class="material-symbols-outlined text-[#c5c9cd] group-hover:text-[#8c96a0] transition-colors" style="font-size: 20px;">chevron_right</span>
+</div>
+</div>
+<div class="h-px bg-gray-100 dark:bg-gray-700 mx-4"></div>
+<!-- Row 2 -->
+<div class="flex items-center justify-between px-4 py-3 min-h-[52px] cursor-pointer active:bg-gray-50 dark:active:bg-gray-800 transition-colors group">
+<span class="text-deep-water dark:text-gray-100 text-[16px] font-normal flex-1">Transaction Fees</span>
+<div class="flex items-center gap-2">
+<span class="text-[#8c96a0] dark:text-gray-400 text-[16px]">Standard SEBON</span>
+<span class="material-symbols-outlined text-[#c5c9cd] group-hover:text-[#8c96a0] transition-colors" style="font-size: 20px;">chevron_right</span>
+</div>
+</div>
+<div class="h-px bg-gray-100 dark:bg-gray-700 mx-4"></div>
+<!-- Row 3 -->
+<div class="flex items-center justify-between px-4 py-3 min-h-[52px] active:bg-gray-50 dark:active:bg-gray-800 transition-colors">
+<span class="text-deep-water dark:text-gray-100 text-[16px] font-normal flex-1">Include DP Charge</span>
+<div class="shrink-0">
+<label class="relative flex h-[31px] w-[51px] cursor-pointer items-center rounded-full border-none bg-[#E9E9EA] dark:bg-gray-600 p-0.5 has-[:checked]:justify-end has-[:checked]:bg-electric-teal transition-colors duration-200">
+<div class="h-[27px] w-[27px] rounded-full bg-white shadow-sm transition-all"></div>
+<input checked="" class="invisible absolute" type="checkbox"/>
+</label>
+</div>
+</div>
+</div>
+</section>
+<!-- Footer -->
+<div class="py-6 text-center">
+<p class="text-[#8c96a0] dark:text-gray-600 text-xs font-normal">NEPSE Fisher v1.0.2</p>
+<p class="text-[#8c96a0] dark:text-gray-600 text-[10px] font-normal mt-1">Market data provided by NEPSE</p>
+</div>
+</div>
+</div>
+</body></html>

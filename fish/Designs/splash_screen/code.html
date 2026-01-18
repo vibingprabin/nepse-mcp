@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NEPSE Fisher Splash</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f9f506",
+                        "background-light": "#f8f8f5",
+                        "background-dark": "#23220f",
+                    },
+                    fontFamily: {
+                        "display": ["Spline Sans", "Noto Sans", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                    animation: {
+                        'float': 'float 6s ease-in-out infinite',
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        }
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 48;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white h-screen w-screen overflow-hidden selection:bg-primary selection:text-black">
+<!-- Main Container -->
+<div class="relative flex h-full w-full flex-col items-center justify-between pb-12 pt-20">
+<!-- Background Abstract Waves (Decorations) -->
+<div class="absolute inset-0 overflow-hidden pointer-events-none">
+<!-- Large Teal Circle blurred -->
+<div class="absolute -top-[10%] -right-[10%] w-[70vw] h-[70vw] rounded-full bg-[#14FFEC]/5 blur-3xl"></div>
+<!-- Large Blue Circle blurred -->
+<div class="absolute top-[20%] -left-[10%] w-[80vw] h-[80vw] rounded-full bg-[#0D7377]/5 blur-3xl"></div>
+<!-- Wave Pattern SVG at bottom -->
+<svg class="absolute bottom-0 left-0 w-full text-gray-200/50 dark:text-gray-800/20" preserveaspectratio="none" viewbox="0 0 1440 320">
+<path d="M0,224L48,213.3C96,203,192,181,288,181.3C384,181,480,203,576,224C672,245,768,267,864,261.3C960,256,1056,224,1152,208C1248,192,1344,192,1392,192L1440,192L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z" fill="currentColor" fill-opacity="1"></path>
+</svg>
+</div>
+<!-- Spacer for vertical balance -->
+<div class="flex-1 flex flex-col items-center justify-center z-10 w-full max-w-md px-6">
+<!-- Logo Container -->
+<div class="relative group cursor-default">
+<!-- Outer Ring Animation -->
+<div class="absolute inset-0 rounded-full border border-[#14FFEC]/30 scale-110 animate-pulse-slow"></div>
+<div class="absolute inset-0 rounded-full border border-[#0D7377]/20 scale-125 animate-pulse-slow" style="animation-delay: 1s;"></div>
+<!-- Main Gradient Circle -->
+<div class="relative w-48 h-48 rounded-full bg-gradient-to-br from-[#0D7377] to-[#14FFEC] shadow-[0_20px_50px_-12px_rgba(13,115,119,0.5)] flex items-center justify-center overflow-hidden transition-transform duration-700 hover:scale-[1.02]">
+<!-- Decorative water sheen -->
+<div class="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent"></div>
+<div class="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-xl"></div>
+<!-- Icon: Sailing (Representing the fisher on waves) -->
+<!-- We use 'sailing' as a metaphor for fishing/navigating markets -->
+<span class="material-symbols-outlined text-white text-[5.5rem] drop-shadow-lg z-10 animate-float">
+                        sailing
+                    </span>
+</div>
+<!-- Primary Yellow Accent: The "Gold" / Opportunity -->
+<div class="absolute top-2 right-4 w-7 h-7 bg-primary rounded-full border-4 border-background-light dark:border-background-dark shadow-lg z-20 flex items-center justify-center animate-[bounce_3s_infinite]">
+<!-- Tiny inner shine -->
+<div class="w-2 h-2 bg-white/60 rounded-full"></div>
+</div>
+</div>
+<!-- Typography -->
+<div class="mt-12 flex flex-col items-center text-center space-y-3">
+<h1 class="text-[#181811] dark:text-white tracking-tight text-4xl font-bold leading-tight">
+                    NEPSE Fisher
+                </h1>
+<div class="h-1 w-12 bg-gradient-to-r from-[#0D7377] to-[#14FFEC] rounded-full"></div>
+<p class="text-[#8c8b5f] dark:text-gray-400 text-lg font-normal leading-normal tracking-wide">
+                    Catch Market Waves
+                </p>
+</div>
+</div>
+<!-- Footer / Loader Area -->
+<div class="flex flex-col items-center gap-4 z-10 mb-8">
+<!-- Custom Loader -->
+<div aria-label="Loading" class="flex items-center gap-2">
+<div class="h-2.5 w-2.5 rounded-full bg-primary animate-[bounce_1.4s_infinite_0ms]"></div>
+<div class="h-2.5 w-2.5 rounded-full bg-primary/70 animate-[bounce_1.4s_infinite_200ms]"></div>
+<div class="h-2.5 w-2.5 rounded-full bg-primary/40 animate-[bounce_1.4s_infinite_400ms]"></div>
+</div>
+<!-- Version / Small Meta -->
+<p class="text-xs text-gray-400 dark:text-gray-600 font-medium tracking-widest uppercase">
+                v1.0.2 • Beta
+            </p>
+</div>
+</div>
+</body></html>

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NEPSE Fisher Widget</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#24598f",
+                        "background-light": "#ffffff",
+                        "background-dark": "#14191f",
+                        "mist-light": "#E6E6E6",
+                        "mist-dark": "#404040",
+                        "trend-green": "#2B9E1C",
+                        "trend-red": "#E02D2D",
+                        "text-main": "#121417",
+                        "text-sub": "#677583",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: {
+                        "widget": "1.375rem", // Approx 22px for iOS feel
+                    },
+                    boxShadow: {
+                        "soft": "0 4px 20px -2px rgba(0, 0, 0, 0.05)",
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom scrollbar hide for cleaner UI in preview */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-gray-100 dark:bg-gray-900 min-h-screen flex items-center justify-center p-6 font-display">
+<!-- Widget Container -->
+<!-- Simulating Medium Widget Size (approx 360x170 for modern phones) -->
+<div class="w-full max-w-[360px] h-[169px] bg-background-light dark:bg-background-dark rounded-widget shadow-soft flex overflow-hidden border border-gray-200/50 dark:border-gray-800 relative group/design-root transition-colors duration-300">
+<!-- Left Pane: Macro (NEPSE Index) -->
+<div class="flex-1 flex flex-col justify-between p-4 pr-3 relative">
+<!-- Header -->
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-primary text-[16px] leading-none">show_chart</span>
+<p class="text-text-sub dark:text-gray-400 text-[10px] font-medium tracking-wider uppercase">NEPSE Index</p>
+</div>
+<!-- Main Value -->
+<div class="flex flex-col mt-0.5">
+<h2 class="text-text-main dark:text-white text-2xl font-bold tracking-tight font-mono">2,045.32</h2>
+<!-- Change Pill -->
+<div class="flex items-center gap-1.5 mt-1">
+<span class="text-trend-green bg-trend-green/10 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono">+12.04</span>
+<span class="text-trend-green text-[10px] font-bold font-mono">0.59%</span>
+</div>
+</div>
+</div>
+<!-- Sparkline Chart -->
+<div class="w-full h-12 relative flex items-end">
+<!-- Decorative gradient line -->
+<svg class="w-full h-full overflow-visible" preserveaspectratio="none" viewbox="0 0 140 40">
+<defs>
+<lineargradient id="gradientLine" x1="0%" x2="100%" y1="0%" y2="0%">
+<stop offset="0%" style="stop-color:#24598f; stop-opacity:0.6"></stop>
+<stop offset="100%" style="stop-color:#24598f; stop-opacity:1"></stop>
+</lineargradient>
+<lineargradient id="fillGradient" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" style="stop-color:#24598f; stop-opacity:0.15"></stop>
+<stop offset="100%" style="stop-color:#24598f; stop-opacity:0"></stop>
+</lineargradient>
+</defs>
+<!-- Fill Area -->
+<path d="M0,35 C20,35 25,25 45,28 C65,31 75,15 95,12 C115,9 120,5 140,2 L140,40 L0,40 Z" fill="url(#fillGradient)"></path>
+<!-- Line Stroke -->
+<path d="M0,35 C20,35 25,25 45,28 C65,31 75,15 95,12 C115,9 120,5 140,2" fill="none" stroke="url(#gradientLine)" stroke-linecap="round" stroke-width="2.5" vector-effect="non-scaling-stroke"></path>
+</svg>
+</div>
+</div>
+<!-- Mist Separator -->
+<div class="w-[1px] bg-mist-light dark:bg-mist-dark my-4"></div>
+<!-- Right Pane: Micro (Timeline) -->
+<div class="flex-1 flex flex-col p-4 pl-3">
+<!-- Header -->
+<div class="flex justify-between items-center mb-3">
+<p class="text-text-sub dark:text-gray-400 text-[10px] font-medium tracking-wider uppercase">Latest</p>
+<!-- Live Pulse Dot -->
+<div class="flex items-center gap-1">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-trend-green opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-trend-green"></span>
+</span>
+</div>
+</div>
+<!-- List -->
+<div class="flex flex-col flex-1 justify-center gap-0">
+<!-- Item 1 -->
+<div class="flex flex-col gap-1 py-1 group/item">
+<div class="flex justify-between items-baseline">
+<span class="text-text-main dark:text-white font-semibold text-sm leading-none">NABIL</span>
+<span class="text-xs text-gray-400 font-mono leading-none">12:05</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-[10px] text-gray-500 dark:text-gray-400 leading-none">Banking</span>
+<span class="text-trend-green font-bold text-xs font-mono bg-trend-green/5 px-1 rounded leading-tight">+3.2%</span>
+</div>
+</div>
+<!-- Divider -->
+<div class="h-[1px] bg-mist-light dark:bg-mist-dark w-full my-2.5"></div>
+<!-- Item 2 -->
+<div class="flex flex-col gap-1 py-1 group/item">
+<div class="flex justify-between items-baseline">
+<span class="text-text-main dark:text-white font-semibold text-sm leading-none">SCB</span>
+<span class="text-xs text-gray-400 font-mono leading-none">11:45</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-[10px] text-gray-500 dark:text-gray-400 leading-none">Standard C.</span>
+<span class="text-trend-red font-bold text-xs font-mono bg-trend-red/5 px-1 rounded leading-tight">-1.1%</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Dark Mode Toggle for Preview (Not part of widget design, just for user to test) -->
+<button class="fixed bottom-6 right-6 bg-white dark:bg-gray-800 p-3 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-white z-50 hover:scale-105 transition-transform" onclick="document.documentElement.classList.toggle('dark')">
+<span class="material-symbols-outlined">contrast</span>
+</button>
+</body></html>
