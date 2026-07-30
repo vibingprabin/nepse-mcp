@@ -18,7 +18,8 @@ Start: get_usage_guide('overview') once per conversation; 'workflows' for call p
 
 Latency:
 - get_broker_floorsheet fetches ALL views in one request — switch the view param, don't re-call.
-- analyze_broker_sentiment per stock; get_broker_floorsheet view=inferred for cost basis.
+- inferred view = ALL-TIME holdings as of to_date (from_date irrelevant); other views are windowed. Run 6mo/1yr to spot dormant holders; slice weekly ranges when uncertain.
+- analyze_broker_sentiment at 7d/14d/30d separates persistent patterns from fleeting.
 - Live tools (get_live_market_data, get_market_depth, get_floor_sheet, screen_stocks) work in market hours only (Sun-Thu 11:00-15:00 NPT).`
 
 func main() {

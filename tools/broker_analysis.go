@@ -27,7 +27,7 @@ func NewBrokerTools() *BrokerTools {
 
 func (bt *BrokerTools) Register(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("get_broker_floorsheet",
-		mcp.WithDescription("Broker positions for a stock in ONE call (all views). view: summary (default, digest of everything), holding (net accumulators), released (distributors), buyer, seller, inferred/positions (current holdings w/ cost basis). top_n caps rows (default 10, 0=all)."),
+		mcp.WithDescription("Broker positions in ONE call. Views: summary (default digest) | holding/released/buyer/seller = activity within from→to window | inferred/positions = ALL-TIME holdings as of to_date with breakeven & confidence (from_date doesn't change it). Dormancy check: run 6mo & 1yr windows — top inferred holders missing from recent activity = dormant old positions. Uncertain? Slice weekly from→to ranges to watch flow evolve. top_n caps rows (default 10, 0=all)."),
 		mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol")),
 		mcp.WithString("from_date", mcp.Required(), mcp.Description("Start YYYY-MM-DD")),
 		mcp.WithString("to_date", mcp.Required(), mcp.Description("End YYYY-MM-DD")),
@@ -36,7 +36,7 @@ func (bt *BrokerTools) Register(s *server.MCPServer) {
 	), bt.handleGetBrokerFloorsheet)
 
 	s.AddTool(mcp.NewTool("analyze_broker_sentiment",
-		mcp.WithDescription("Single-stock broker concentration: AccRatio=buy/(buy+sell)% (>55 accumulation, <45 distribution), HHI (>0.25 concentrated), Eff#=1/HHI, model confidence, warnings. show_brokers=true names top accumulators. Cost basis: get_broker_floorsheet view=inferred."),
+		mcp.WithDescription("Single-stock broker flow & concentration. Gini x5 views (buyer/seller/holding/released/inferred): inequality 0=dispersed→1=one dominates. HHI/Eff#: top-share dominance, <4 = fragile. Cohort purity >60% = conviction, ~50% = churn. Underwater = all-time holders above breakeven (overhead supply). show_brokers=true names top accumulators. Run 7d/14d/30d: persistent vs fleeting. Cost basis: get_broker_floorsheet view=inferred."),
 		mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol")),
 		mcp.WithNumber("period_days", mcp.Description("Lookback days (default: 7)")),
 		mcp.WithBoolean("show_brokers", mcp.Description("Show top 5 named accumulating brokers with % share")),
@@ -240,64 +240,79 @@ func (bt *BrokerTools) handleAnalyzeBrokerSentiment(ctx context.Context, request
 		return mcp.NewToolResultError(fmt.Sprintf("Error: %v", err)), nil
 	}
 
-	rows := broker.RowsForView(ps, "holding")
-	if len(rows) == 0 {
+	holdRows := broker.RowsForView(ps, "holding")
+	relRows := broker.RowsForView(ps, "released")
+	buyRows := broker.RowsForView(ps, "buyer")
+	selRows := broker.RowsForView(ps, "seller")
+	infRows := ps.Data.Holding
+	if len(infRows) == 0 {
+		infRows = ps.Data.TotalHolding
+	}
+
+	if len(holdRows) == 0 && len(relRows) == 0 {
 		return mcp.NewToolResultText(fmt.Sprintf("%s: no broker activity in %dd", symbol, days)), nil
 	}
 
 	var totalAcc, totalDist float64
+	var accBuy, accSell, distBuy, distSell float64
 	type brokerInfo struct {
 		id  int64
 		qty float64
 	}
 	var accBrokers []brokerInfo
-	for _, e := range rows {
+	for _, e := range holdRows {
 		n := float64(e.NetQuantity)
-		if n > 0 {
-			totalAcc += n
-			accBrokers = append(accBrokers, brokerInfo{e.BrokerID.Int(), n})
-		} else if n < 0 {
-			totalDist += -n
-		}
+		totalAcc += n
+		accBuy += float64(e.TotalBought)
+		accSell += float64(e.TotalSold)
+		accBrokers = append(accBrokers, brokerInfo{e.BrokerID.Int(), n})
+	}
+	for _, e := range relRows {
+		totalDist += float64(e.ReleasedQuantity)
+		distBuy += float64(e.TotalBought)
+		distSell += float64(e.TotalSold)
 	}
 
-	hhi := analyzer.HHI(rows, analyzer.NetQty)
+	accPurity := 0.0
+	if accBuy+accSell > 0 {
+		accPurity = accBuy / (accBuy + accSell) * 100
+	}
+	distPurity := 0.0
+	if distBuy+distSell > 0 {
+		distPurity = distSell / (distBuy + distSell) * 100
+	}
+
+	hhi := analyzer.HHI(holdRows, analyzer.NetQty)
 	effBrokers := 0.0
 	if hhi > 0 {
 		effBrokers = 1.0 / hhi
 	}
 
-	totalActivity := totalAcc + totalDist
-	accRatio := 0.0
-	if totalActivity > 0 {
-		accRatio = (totalAcc / totalActivity) * 100
-	}
+	gAcc := analyzer.Gini(buyRows, analyzer.BoughtQty)
+	gDist := analyzer.Gini(selRows, analyzer.SoldQty)
+	gHold := analyzer.Gini(holdRows, analyzer.NetQty)
+	gRel := analyzer.Gini(relRows, analyzer.ReleasedQty)
+	gInf := analyzer.Gini(infRows, analyzer.AdjQty)
 
-	sentiment := "NEUTRAL"
-	if accRatio > 70 {
-		sentiment = "STRONG_ACC"
-	} else if accRatio > 55 {
-		sentiment = "ACC"
-	} else if accRatio < 30 {
-		sentiment = "STRONG_DIST"
-	} else if accRatio < 45 {
-		sentiment = "DIST"
-	}
-
-	concentration := "DISPERSED"
-	if hhi > 0.5 {
-		concentration = "MONOPOLY"
-	} else if hhi > 0.25 {
-		concentration = "CONCENTRATED"
-	} else if hhi > 0.15 {
-		concentration = "MODERATE"
+	underwater := 0
+	for _, e := range infRows {
+		if e.BreakevenPrice != nil && e.AdjustedQuantity.Float() > 0 {
+			if e.BreakevenPrice.Float() > e.MarketValue.Float()/e.AdjustedQuantity.Float() {
+				underwater++
+			}
+		}
 	}
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "%s (%dd, %s → %s)\n", symbol, days, fromDate, toDate)
-	fmt.Fprintf(&sb, "Sentiment: %s | AccRatio: %.0f%%\n", sentiment, accRatio)
-	fmt.Fprintf(&sb, "Net: %+.0f (Acc:%.0f Dist:%.0f)\n", totalAcc-totalDist, totalAcc, totalDist)
-	fmt.Fprintf(&sb, "Concentration: %s | HHI:%.3f | Eff#:%.1f\n", concentration, hhi, effBrokers)
+	fmt.Fprintf(&sb, "Flow: Acc %.0f | Dist %.0f | Net %+.0f\n", totalAcc, totalDist, totalAcc-totalDist)
+	fmt.Fprintf(&sb, "Cohort purity: acc %.0f%% buy-side | dist %.0f%% sell-side (>60%% one-sided conviction, ~50%% churn)\n", accPurity, distPurity)
+	fmt.Fprintf(&sb, "Gini (0=dispersed, 1=one broker): acc:%.2f dist:%.2f holding:%.2f released:%.2f inferred:%.2f\n",
+		gAcc, gDist, gHold, gRel, gInf)
+	fmt.Fprintf(&sb, "HHI(holding):%.3f | Eff#:%.1f\n", hhi, effBrokers)
+	if len(infRows) > 0 {
+		fmt.Fprintf(&sb, "Underwater: %d/%d inferred holders above breakeven\n", underwater, len(infRows))
+	}
 
 	m := ps.Meta
 	if m.ConfidenceLabel != "" {
@@ -324,7 +339,7 @@ func (bt *BrokerTools) handleAnalyzeBrokerSentiment(ctx context.Context, request
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("\nGuide: get_usage_guide('broker') | cost basis: get_broker_floorsheet(..., view='inferred')")
+	sb.WriteString("\nTip: compare 7d / 14d / 30d — a pattern present at all timeframes is material; one visible only at short range is fleeting. Cost basis: get_broker_floorsheet(..., view='inferred')")
 	return mcp.NewToolResultText(sb.String()), nil
 }
 

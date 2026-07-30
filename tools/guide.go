@@ -32,8 +32,9 @@ Morning brief:
 Stock deep dive:
 1. get_security_details — fundamentals, 52W position
 2. get_price_history include_analysis=true — trend, SMA, volatility
-3. analyze_broker_sentiment show_brokers=true — smart-money flow
-4. get_broker_floorsheet view=inferred — holders, breakeven, confidence
+3. analyze_broker_sentiment at 7d + 30d — persistent or fleeting?
+4. get_broker_floorsheet view=inferred — all-time holders, breakeven
+5. floorsheet summary 6mo/1yr — dormant vs active holders; slice weekly if uncertain
 
 Sector rotation:
 1. screen_stocks sector='Hydro Power' min_volume=50000
@@ -45,22 +46,27 @@ Combos:
 
 const guideBroker = `# Broker Flow (LaganiLab adjusted-broker-position-v2)
 
-get_broker_floorsheet views:
-- summary (default) — meta + top 5 of each side. Cheapest full picture.
-- holding — net accumulators | released — net distributors
-- buyer / seller — raw top purchasers / sellers
-- inferred (alias: positions) — current holdings: AdjQty, Breakeven, MktValue, UnrealPL, DivRecvd, Conf(0-100)
+Views (get_broker_floorsheet):
+- summary (default) — meta + top 5 each side. Cheapest full picture.
+- holding/released/buyer/seller — activity within from→to window
+- inferred (alias: positions) — ALL-TIME holdings as of to_date: AdjQty, Breakeven, MktValue, UnrealPL, DivRecvd, Conf. Same table for any from_date; only to_date matters.
 
 Inferred fields:
-- Breakeven: adjusted cost/share ('-' = untraceable). Price below it = underwater holder.
-- Conf <40 = directional only. DivRecvd/Bonus make P&L corporate-action-adjusted.
+- Breakeven: adjusted cost/share ('-' = untraceable). Price below = underwater (overhead supply).
+- Conf <40 = directional only. DivRecvd/Bonus = corporate-action-adjusted P&L.
 
-Meta: confidence_label + warnings (mergers, pre-2014 gap, unmatched sells) — respect before trusting quantities. Coverage starts 2014-05-05; older positions are INFERRED.
+Meta: confidence_label + warnings (mergers, pre-2014 gap, unmatched sells) — respect before trusting quantities.
 
-Signals:
-- AccRatio = buy/(buy+sell): >70 strong acc, 55-70 acc, 45-55 neutral, 30-45 dist, <30 strong dist
-- HHI: >0.25 concentrated, >0.5 monopoly (fragile). Eff# = 1/HHI; <4 = monolithic flow
-- Rising holding-HHI + falling released-HHI = concentration into stronger hands (bullish)`
+Signals (analyze_broker_sentiment):
+- Purity: cohort one-sidedness. >60% conviction, ~50% churn
+- Gini x5 views: inequality across ALL brokers; rising across timeframes = concentration building
+- HHI/Eff#: top-share dominance; Eff#<4 = fragile/monolithic
+- Acc = Dist always (every buy has a sell) — read magnitude, not ratio
+
+Workflow:
+- 7d/14d/30d sentiment: pattern at all ranges = persistent; short-range only = fleeting
+- 6mo & 1yr floorsheet: dormancy check — inferred holder absent from recent activity = dormant old money; present = active hand
+- Uncertain? Slice weekly from→to ranges; watch accumulators/distributors evolve week by week`
 
 const guideSentiment = `# Fear & Greed (get_market_sentiment)
 
