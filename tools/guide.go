@@ -15,7 +15,7 @@ Sources: NEPSE official API (market, prices, lists, depth, floorsheet, graphs) +
 
 Tools:
 - Market: get_market_summary, get_live_market_data, get_market_sentiment
-- Securities: search_securities, get_security_details, compare_securities, screen_stocks
+- Securities: search_securities, get_security_details, get_company_profile, compare_securities, screen_stocks
 - Price: get_price_history, get_market_depth, get_floor_sheet, get_intraday_graph
 - Lists: get_top_list
 - Broker: get_broker_floorsheet, analyze_broker_sentiment
@@ -30,11 +30,12 @@ Morning brief:
 3. get_top_list gainers + losers
 
 Stock deep dive:
-1. get_security_details — fundamentals, 52W position
-2. get_price_history include_analysis=true — trend, SMA, volatility
-3. analyze_broker_sentiment at 7d + 30d — persistent or fleeting?
-4. get_broker_floorsheet view=inferred — all-time holders, breakeven
-5. floorsheet summary 6mo/1yr — dormant vs active holders; slice weekly if uncertain
+1. get_company_profile — full fundamentals, trends, corporate actions
+2. get_security_details — price snapshot, 52W position
+3. get_price_history include_analysis=true — trend, SMA, volatility
+4. analyze_broker_sentiment at 7d + 30d — persistent or fleeting?
+5. get_broker_floorsheet view=inferred — all-time holders, breakeven
+6. floorsheet summary 6mo/1yr — dormant vs active holders; slice weekly if uncertain
 
 Sector rotation:
 1. screen_stocks sector='Hydro Power' min_volume=50000

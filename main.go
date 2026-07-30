@@ -52,6 +52,8 @@ func main() {
 
 	tools.NewBrokerTools().Register(s)
 
+	tools.RegisterCompanyProfileTools(s)
+
 	tools.RegisterGuideTool(s)
 
 	stdioServer := server.NewStdioServer(s)
