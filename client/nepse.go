@@ -8,7 +8,7 @@ import (
 
 	"github.com/patrickmn/go-cache"
 	api "github.com/voidarchive/go-nepse"
-	"github.com/voidarchive/nepse-mcp-server/config"
+	"vibinprabin/nepse-mcp/config"
 )
 
 // NepseClient wraps the go-nepse client with caching support

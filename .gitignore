@@ -1,0 +1,7 @@
+*.exe
+*.exe~
+nul
+stdout*.txt
+stderr*.txt
+stockofinterest.csv
+.sisyphus/

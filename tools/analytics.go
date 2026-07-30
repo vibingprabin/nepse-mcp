@@ -7,68 +7,16 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/voidarchive/nepse-mcp-server/client"
-	"github.com/voidarchive/nepse-mcp-server/utils"
+	"vibinprabin/nepse-mcp/client"
+	"vibinprabin/nepse-mcp/utils"
 )
 
 func RegisterAnalyticsTools(s *server.MCPServer, c *client.NepseClient) {
 
-	// 1. get_financial_ratios
-	s.AddTool(mcp.NewTool("get_financial_ratios",
-		mcp.WithDescription("Get key financial metrics and ratios for a security"),
-		mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol (e.g., NABIL)")),
-	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		symbol, err := request.RequireString("symbol")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		if err := utils.ValidateSymbol(symbol); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		detail, err := c.GetSecurityDetail(symbol)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to fetch details: %v", err)), nil
-		}
-
-		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("# Financial Ratios: %s\n\n", detail.Symbol))
-		
-		sb.WriteString("## Valuation\n")
-		sb.WriteString("| Metric | Value |\n")
-		sb.WriteString("|---|---|\n")
-		sb.WriteString(fmt.Sprintf("| Last Traded Price | %s |\n", utils.FormatCurrency(detail.LastTradedPrice)))
-		sb.WriteString(fmt.Sprintf("| Market Cap | %s |\n", utils.FormatCurrency(detail.MarketCap)))
-		sb.WriteString(fmt.Sprintf("| Paid-Up Capital | %s |\n", utils.FormatCurrency(detail.PaidUpCapital)))
-		
-		sb.WriteString("\n## Trading Range\n")
-		sb.WriteString("| Metric | Value |\n")
-		sb.WriteString("|---|---|\n")
-		sb.WriteString(fmt.Sprintf("| 52-Week High | %s |\n", utils.FormatNumber(detail.FiftyTwoWeekHigh)))
-		sb.WriteString(fmt.Sprintf("| 52-Week Low | %s |\n", utils.FormatNumber(detail.FiftyTwoWeekLow)))
-		sb.WriteString(fmt.Sprintf("| Current Price | %s |\n", utils.FormatCurrency(detail.LastTradedPrice)))
-		
-		// Calculate distance from highs/lows
-		if detail.FiftyTwoWeekHigh > 0 {
-			distFromHigh := ((detail.FiftyTwoWeekHigh - detail.LastTradedPrice) / detail.FiftyTwoWeekHigh) * 100
-			sb.WriteString(fmt.Sprintf("| Distance from 52W High | %.2f%% |\n", distFromHigh))
-		}
-		
-		sb.WriteString("\n## Ownership Structure\n")
-		sb.WriteString("| Metric | Value |\n")
-		sb.WriteString("|---|---|\n")
-		sb.WriteString(fmt.Sprintf("| Promoter Holdings | %.2f%% |\n", detail.PromoterPercent))
-		sb.WriteString(fmt.Sprintf("| Public Holdings | %.2f%% |\n", detail.PublicPercent))
-		sb.WriteString(fmt.Sprintf("| Listed Shares | %s |\n", utils.FormatVolume(detail.ListedShares)))
-
-		return mcp.NewToolResultText(sb.String()), nil
-	})
-
-	// 2. compare_securities
+	// 1. compare_securities
 	s.AddTool(mcp.NewTool("compare_securities",
-		mcp.WithDescription("Compare multiple securities side-by-side"),
-		mcp.WithString("symbols", mcp.Required(), mcp.Description("Comma-separated symbols (e.g., NABIL,SCB,NICA)")),
+		mcp.WithDescription("Side-by-side: LTP, change, volume, market cap, 52W range. Max 5 symbols."),
+		mcp.WithString("symbols", mcp.Required(), mcp.Description("Comma-separated symbols (e.g., NABIL,SCB,NICA). Max 5.")),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		symbolsStr, err := request.RequireString("symbols")
 		if err != nil {
@@ -146,14 +94,14 @@ func RegisterAnalyticsTools(s *server.MCPServer, c *client.NepseClient) {
 		return mcp.NewToolResultText(sb.String()), nil
 	})
 
-	// 3. screen_stocks
+	// 2. screen_stocks
 	s.AddTool(mcp.NewTool("screen_stocks",
-		mcp.WithDescription("Filter and screen stocks by various criteria"),
-		mcp.WithString("sector", mcp.Description("Filter by sector (e.g., 'Commercial Banks')")),
-		mcp.WithNumber("min_volume", mcp.Description("Minimum traded volume")),
-		mcp.WithNumber("min_change", mcp.Description("Minimum percentage change")),
-		mcp.WithNumber("max_change", mcp.Description("Maximum percentage change")),
-		mcp.WithNumber("limit", mcp.Description("Maximum results (default: 20)")),
+		mcp.WithDescription("Filter stocks by sector, volume, % change. Uses live feed — market hours only."),
+		mcp.WithString("sector", mcp.Description("e.g., 'Commercial Banks', 'Hydro Power'")),
+		mcp.WithNumber("min_volume", mcp.Description("Min traded volume")),
+		mcp.WithNumber("min_change", mcp.Description("Min % change")),
+		mcp.WithNumber("max_change", mcp.Description("Max % change")),
+		mcp.WithNumber("limit", mcp.Description("Max results (default: 20)")),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		sector := request.GetString("sector", "")
 		minVolume := int64(request.GetInt("min_volume", 0))
