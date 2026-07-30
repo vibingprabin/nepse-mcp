@@ -118,8 +118,8 @@ func RegisterCompanyProfileTools(s *server.MCPServer) {
 						desc = fmt.Sprintf("%.0f%%", a.ActionDetails.Percent.Float())
 					}
 				}
-				if len(desc) > 160 {
-					desc = desc[:160] + "…"
+				if len(desc) > 400 {
+					desc = desc[:400] + "…"
 				}
 				sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", a.Date, typ, desc))
 			}
