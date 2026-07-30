@@ -167,6 +167,9 @@ func (c *Client) GetCompanyData(symbol string) (*CompanyData, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("%s: symbol not found (check symbol name)", symbol)
+		}
 		return nil, fmt.Errorf("%s returned status %d", symbol, resp.StatusCode)
 	}
 
@@ -186,9 +189,39 @@ func (c *Client) GetCompanyData(symbol string) (*CompanyData, error) {
 func (d *CompanyData) FactsMap() map[string]string {
 	m := make(map[string]string, len(d.Facts))
 	for _, f := range d.Facts {
-		m[strings.ToLower(f.Label)] = fmt.Sprintf("%v", f.Value)
+		m[strings.ToLower(f.Label)] = formatFactValue(f.Value)
 	}
 	return m
+}
+
+func formatFactValue(v interface{}) string {
+	switch val := v.(type) {
+	case float64:
+		if val == float64(int64(val)) && val > 999 {
+			return intComma(int64(val))
+		}
+		return fmt.Sprintf("%.2f", val)
+	case string:
+		return val
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func intComma(n int64) string {
+	s := fmt.Sprintf("%d", n)
+	if len(s) <= 3 {
+		return s
+	}
+	var parts []string
+	for i := len(s); i > 0; i -= 3 {
+		start := i - 3
+		if start < 0 {
+			start = 0
+		}
+		parts = append([]string{s[start:i]}, parts...)
+	}
+	return strings.Join(parts, ",")
 }
 
 // FundamentalsByPeriod groups fundamentals by their period label.

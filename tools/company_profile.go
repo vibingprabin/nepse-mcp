@@ -113,17 +113,13 @@ func RegisterCompanyProfileTools(s *server.MCPServer) {
 				}
 				typ := actionTypeLabel(a.Type, pct)
 				desc := a.Description
-				if idx := strings.Index(desc, "| Effective:"); idx > 0 {
-					desc = strings.TrimSpace(desc[:idx])
-				}
-				if idx := strings.Index(desc, "| Announcement:"); idx > 0 {
-					desc = strings.TrimSpace(desc[idx+14:])
-					if eidx := strings.Index(desc, "| Book closure:"); eidx > 0 {
-						desc = strings.TrimSpace(desc[:eidx])
+				if desc == "" && a.ActionDetails != nil {
+					if a.ActionDetails.Percent.Float() > 0 {
+						desc = fmt.Sprintf("%.0f%%", a.ActionDetails.Percent.Float())
 					}
 				}
-				if len(desc) > 120 {
-					desc = desc[:120] + "…"
+				if len(desc) > 160 {
+					desc = desc[:160] + "…"
 				}
 				sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", a.Date, typ, desc))
 			}
