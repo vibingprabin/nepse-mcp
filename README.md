@@ -149,11 +149,21 @@ Assumptions live in the research report — always read it and check `get_compan
 |---|---|
 | `get_usage_guide` | `topic?: 'overview'\|'pipeline'\|'movers'\|'speculation'\|'value'\|'sentiment'\|'surface'\|'workflows'\|'broker'\|'market'\|'ansu'\|'news'\|'reliability'` default `overview` (`tools/guide.go:293`) |
 
-## Latency & Market Hours
+## Workflows (from `tools/guide.go:guideWorkflows`)
+
+- **Morning brief:** `get_market_sentiment` + `get_market_summary(include_sectors)` + `get_top_list(type='gainers'|'losers'|'turnover')`
+- **Speculative trade:** `get_price_history(include_analysis)` + `analyze_broker_sentiment(7/14/30)` + `get_broker_floorsheet(view)` + `get_market_sentiment` + `get_news(company=)`
+- **Value hunt:** `get_valuation_screener` → `get_stock_valuation` + `get_company_profile` + `get_price_history(include_analysis)` + `get_research_articles` → `get_research_article` + `get_broker_floorsheet(view='inferred')` + `get_news(company=)`
+- **Quick quote:** one call (`get_security_details` or `get_usage_guide(topic='surface')`)
+
+## Latency, Hours & Reliability
 
 - `get_broker_floorsheet` fetches all views in one request; `view='inferred'` ignores `from_date` (`main.go:37`)
 - `analyze_flow_change` fetches two windows in parallel; shares cache with `analyze_broker_sentiment`
 - `get_market_depth`, `get_floor_sheet`, `get_live_market_data` work Sun-Thu 11:00-15:00 NPT (off-hours return last session)
+- Broker replay for `type=all` takes 2-10 s over long ranges — keep ranges tight; failure auto-falls back to per-view `degraded(partial views)` (`tools/guide.go:guideReliability`)
+- Pre-2014 holdings inferred, lower confidence — respect ⚠ `warnings` in floorsheet `meta`
+- Floorsheets lag close; holidays serve last trading day; WASM-auth token self-heals on 401/403
 
 ## Project Layout
 
