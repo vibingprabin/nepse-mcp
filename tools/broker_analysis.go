@@ -27,24 +27,24 @@ func NewBrokerTools() *BrokerTools {
 
 func (bt *BrokerTools) Register(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("get_broker_floorsheet",
-		mcp.WithDescription("Broker positions in ONE call. Views: summary (default digest) | holding/released/buyer/seller = activity within from→to window | inferred/positions = ALL-TIME holdings as of to_date with breakeven & confidence (from_date doesn't change it). Dormancy check: run 6mo & 1yr windows — top inferred holders missing from recent activity = dormant old positions. Uncertain? Slice weekly from→to ranges to watch flow evolve. top_n caps rows (default 10, 0=all)."),
+		mcp.WithDescription("Broker positions in ONE call. view: summary(default)|holding|released|buyer|seller|inferred(ALL-TIME as of to_date, from_date ignored; breakeven+confidence). buyer lists net accumulators (sorted by net qty desc), seller lists net distributors (sorted by net qty asc, biggest sellers first). top_n rows (10, 0=all). Guides: 'broker' topic."),
 		mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol")),
-		mcp.WithString("from_date", mcp.Required(), mcp.Description("Start YYYY-MM-DD")),
-		mcp.WithString("to_date", mcp.Required(), mcp.Description("End YYYY-MM-DD")),
-		mcp.WithString("view", mcp.Description("summary|holding|released|buyer|seller|inferred (default: summary)")),
-		mcp.WithNumber("top_n", mcp.Description("Rows per view (default: 10, 0=all)")),
+		mcp.WithString("from_date", mcp.Description("Start YYYY-MM-DD (optional; default: 30 days before to_date; ignored for view='inferred')")),
+		mcp.WithString("to_date", mcp.Description("End YYYY-MM-DD (optional; default: today)")),
+		mcp.WithString("view", mcp.Description("summary|holding|released|buyer|seller|inferred")),
+		mcp.WithNumber("top_n", mcp.Description("Rows per view (10, 0=all)")),
 	), bt.handleGetBrokerFloorsheet)
 
 	s.AddTool(mcp.NewTool("analyze_broker_sentiment",
-		mcp.WithDescription("Single-stock broker flow & concentration. Gini x5 views (buyer/seller/holding/released/inferred): inequality 0=dispersed→1=one dominates. HHI/Eff#: top-share dominance, <4 = fragile. Cohort purity >60% = conviction, ~50% = churn. Underwater = all-time holders above breakeven (overhead supply). show_brokers=true names top accumulators. Run 7d/14d/30d: persistent vs fleeting. Cost basis: get_broker_floorsheet view=inferred."),
+		mcp.WithDescription("Single-stock broker flow & concentration: read first (one-sided accumulation/distribution vs churn/standoff), then Gini x5, HHI/Eff#, cohort purity, underwater holders. Run 7d/14d/30d. show_brokers names top accumulators. Combine with: analyze_flow_change (window change), get_broker_floorsheet(view='inferred') (cost basis), get_price_history (where in the move this stands)."),
 		mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol")),
 		mcp.WithNumber("period_days", mcp.Description("Lookback days (default: 7)")),
-		mcp.WithBoolean("show_brokers", mcp.Description("Show top 5 named accumulating brokers with % share")),
+		mcp.WithBoolean("show_brokers", mcp.Description("Name top 5 accumulators with % share")),
 	), bt.handleAnalyzeBrokerSentiment)
 
 	s.AddTool(mcp.NewTool("get_market_sentiment",
-		mcp.WithDescription("NEPSE Fear & Greed index (0-100): score, label, 7 components, market breadth, recent history. history_days default 30 (max 120). index_key optional e.g. banking_subindex."),
-		mcp.WithNumber("history_days", mcp.Description("Days of score history (default: 30, max: 120)")),
+		mcp.WithDescription("NEPSE Fear & Greed 0-100: score, label, 7 components, breadth, history. history_days default 30 (max 120). index_key for sector sentiment."),
+		mcp.WithNumber("history_days", mcp.Description("Score history days (30, max 120)")),
 		mcp.WithString("index_key", mcp.Description("Index key (default: nepse composite)")),
 	), bt.handleGetMarketSentiment)
 }
@@ -55,8 +55,11 @@ func (bt *BrokerTools) fetchPositions(symbol, fromDate, toDate string) (*broker.
 	return bt.brokerClient.GetPositionSet(ctx, symbol, fromDate, toDate)
 }
 
-func sortBy(entries []broker.BrokerEntry, key func(broker.BrokerEntry) float64) {
+func sortBy(entries []broker.BrokerEntry, key func(broker.BrokerEntry) float64, ascending bool) {
 	sort.SliceStable(entries, func(i, j int) bool {
+		if ascending {
+			return key(entries[i]) < key(entries[j])
+		}
 		return key(entries[i]) > key(entries[j])
 	})
 }
@@ -70,6 +73,12 @@ func (bt *BrokerTools) handleGetBrokerFloorsheet(ctx context.Context, request mc
 
 	if err := utils.ValidateSymbol(symbol); err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
+	}
+	if toDate == "" {
+		toDate = time.Now().Format("2006-01-02")
+	}
+	if fromDate == "" {
+		fromDate = time.Now().AddDate(0, 0, -30).Format("2006-01-02")
 	}
 	if _, _, err := utils.ValidateDateRange(fromDate, toDate, 0); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid date range: %v", err)), nil
@@ -120,13 +129,13 @@ func writeFloorsheetSummary(sb *strings.Builder, ps *broker.PositionSet, topN in
 	}
 
 	acc := append([]broker.BrokerEntry(nil), ps.Data.TotalHolding...)
-	sortBy(acc, func(e broker.BrokerEntry) float64 { return float64(e.NetQuantity) })
+	sortBy(acc, func(e broker.BrokerEntry) float64 { return float64(e.NetQuantity) }, false)
 	rel := append([]broker.BrokerEntry(nil), ps.Data.Released...)
-	sortBy(rel, func(e broker.BrokerEntry) float64 { return float64(e.ReleasedQuantity) })
+	sortBy(rel, func(e broker.BrokerEntry) float64 { return float64(e.ReleasedQuantity) }, false)
 	buy := append([]broker.BrokerEntry(nil), ps.Data.Buyer...)
-	sortBy(buy, func(e broker.BrokerEntry) float64 { return float64(e.TotalBought) })
+	sortBy(buy, func(e broker.BrokerEntry) float64 { return float64(e.TotalBought) }, false)
 	sel := append([]broker.BrokerEntry(nil), ps.Data.Seller...)
-	sortBy(sel, func(e broker.BrokerEntry) float64 { return float64(e.TotalSold) })
+	sortBy(sel, func(e broker.BrokerEntry) float64 { return float64(e.TotalSold) }, false)
 
 	writeMiniTable(sb, "Top Accumulators (net qty)", acc, topN, func(e broker.BrokerEntry) string {
 		return utils.FormatVolume(e.NetQuantity.Int())
@@ -167,7 +176,7 @@ func writeFloorsheetView(sb *strings.Builder, ps *broker.PositionSet, view strin
 		fmt.Fprintf(sb, "%s: no %s data\n", ps.Meta.Symbol, view)
 		return
 	}
-	sortBy(rows, func(e broker.BrokerEntry) float64 { return float64(e.NetQuantity) })
+	sortBy(rows, func(e broker.BrokerEntry) float64 { return float64(e.NetQuantity) }, view == "seller")
 
 	var totalNet int64
 	var totalBuy, totalSell float64
@@ -199,7 +208,7 @@ func writePositionsView(sb *strings.Builder, ps *broker.PositionSet, topN int) {
 		sb.WriteString("no inferred position data\n")
 		return
 	}
-	sortBy(rows, func(e broker.BrokerEntry) float64 { return e.MarketValue.Float() })
+	sortBy(rows, func(e broker.BrokerEntry) float64 { return e.MarketValue.Float() }, false)
 
 	fmt.Fprintf(sb, "Inferred positions (%d brokers, sorted by market value):\n\n", len(rows))
 	sb.WriteString("| Broker | AdjQty | Breakeven | MktValue | UnrealPL | DivRecvd | Conf |\n|---|---|---|---|---|---|---|\n")
@@ -304,14 +313,24 @@ func (bt *BrokerTools) handleAnalyzeBrokerSentiment(ctx context.Context, request
 	}
 
 	var sb strings.Builder
+	read := "dispersed churn — no strong directional edge"
+	switch {
+	case accPurity > 60 && distPurity > 60:
+		read = "two-sided standoff — conviction on BOTH sides (rotation between strong hands; no clean net edge)"
+	case accPurity > 60:
+		read = "one-sided accumulation — buyers dominate this window"
+	case distPurity > 60:
+		read = "one-sided distribution — sellers dominate this window"
+	}
 	fmt.Fprintf(&sb, "%s (%dd, %s → %s)\n", symbol, days, fromDate, toDate)
-	fmt.Fprintf(&sb, "Flow: Acc %.0f | Dist %.0f | Net %+.0f\n", totalAcc, totalDist, totalAcc-totalDist)
+	fmt.Fprintf(&sb, "Read: %s (compare across 7/14/30d — persistent = material, short-range only = fleeting)\n", read)
+	fmt.Fprintf(&sb, "Flow: Acc %.0f | Dist %.0f | Net %+.0f (position-model artifact — every buy has a sell)\n", totalAcc, totalDist, totalAcc-totalDist)
 	fmt.Fprintf(&sb, "Cohort purity: acc %.0f%% buy-side | dist %.0f%% sell-side (>60%% one-sided conviction, ~50%% churn)\n", accPurity, distPurity)
 	fmt.Fprintf(&sb, "Gini (0=dispersed, 1=one broker): acc:%.2f dist:%.2f holding:%.2f released:%.2f inferred:%.2f\n",
 		gAcc, gDist, gHold, gRel, gInf)
 	fmt.Fprintf(&sb, "HHI(holding):%.3f | Eff#:%.1f\n", hhi, effBrokers)
 	if len(infRows) > 0 {
-		fmt.Fprintf(&sb, "Underwater: %d/%d inferred holders above breakeven\n", underwater, len(infRows))
+		fmt.Fprintf(&sb, "Underwater: %d/%d inferred holders (below cost — normal for any name off its highs; breakevens are one input, trend and volume decide).\n", underwater, len(infRows))
 	}
 
 	m := ps.Meta
@@ -340,6 +359,20 @@ func (bt *BrokerTools) handleAnalyzeBrokerSentiment(ctx context.Context, request
 	}
 
 	sb.WriteString("\nTip: compare 7d / 14d / 30d — a pattern present at all timeframes is material; one visible only at short range is fleeting. Cost basis: get_broker_floorsheet(..., view='inferred')")
+	sb.WriteString("\n\nBRANCHES (pick the edge whose condition matches the facts):\n")
+	switch {
+	case accPurity > 60 && distPurity > 60:
+		sb.WriteString("  • two-sided conviction -> analyze_flow_change(symbol, lookback_days=28): is the standoff older than the window?\n")
+		sb.WriteString("  • -> get_news(company=symbol): what catalyst would resolve it?\n")
+	case accPurity > 60:
+		sb.WriteString("  • one-sided accumulation -> analyze_flow_change(symbol, lookback_days=14): new hand or persistent?\n")
+		sb.WriteString("  • -> get_news(company=symbol): the catalyst check\n")
+	case distPurity > 60:
+		sb.WriteString("  • one-sided distribution -> get_price_history(symbol, limit=30, include_analysis): breakdown or shakeout?\n")
+		sb.WriteString("  • -> get_news(query=symbol, category='announcement'): the trigger (rights, promoter sale, results)\n")
+	default:
+		sb.WriteString("  • dispersed churn -> analyze_flow_change(symbol, lookback_days=14): has anything changed vs the prior window?\n")
+	}
 	return mcp.NewToolResultText(sb.String()), nil
 }
 

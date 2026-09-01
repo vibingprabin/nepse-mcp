@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -17,22 +18,20 @@ func RegisterPriceTools(s *server.MCPServer, c *client.NepseClient) {
 
 	// 1. get_price_history
 	s.AddTool(mcp.NewTool("get_price_history",
-		mcp.WithDescription("Historical OHLCV. include_analysis adds SMA(10/20), trend, range, avg volume, volatility."),
+		mcp.WithDescription("OHLCV history. Params: symbol, start_date (YYYY-MM-DD, optional; default 90 days back), end_date (optional; default today), limit (default 20), sort ('desc' default|'asc'), include_analysis (adds structure block: 20-session gain, period range, avg vol, volatility — no oscillators)."),
 		mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol (e.g., NMB)")),
-		mcp.WithString("start_date", mcp.Required(), mcp.Description("Start date (YYYY-MM-DD)")),
-		mcp.WithString("end_date", mcp.Required(), mcp.Description("End date (YYYY-MM-DD)")),
+		mcp.WithString("start_date", mcp.Description("Start date (YYYY-MM-DD, optional; default: 90 days back)")),
+		mcp.WithString("end_date", mcp.Description("End date (YYYY-MM-DD, optional; default: today)")),
 		mcp.WithNumber("limit", mcp.Description("Max rows (default: 20)")),
 		mcp.WithString("sort", mcp.Description("'desc' (newest first, default) or 'asc'")),
-		mcp.WithBoolean("include_analysis", mcp.Description("Add SMA/trend/volatility block (default: false)")),
+		mcp.WithBoolean("include_analysis", mcp.Description("Add structure block: 20-session gain, range, avg vol, volatility (default: false)")),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		symbol, err := request.RequireString("symbol")
         if err != nil { return mcp.NewToolResultError(err.Error()), nil }
         
-		startStr, err := request.RequireString("start_date")
-        if err != nil { return mcp.NewToolResultError(err.Error()), nil }
+		startStr := request.GetString("start_date", "")
         
-		endStr, err := request.RequireString("end_date")
-        if err != nil { return mcp.NewToolResultError(err.Error()), nil }
+		endStr := request.GetString("end_date", "")
 		
 		limit := request.GetInt("limit", 20)
 		sortOrder := request.GetString("sort", "desc")
@@ -41,7 +40,12 @@ func RegisterPriceTools(s *server.MCPServer, c *client.NepseClient) {
 		if err := utils.ValidateSymbol(symbol); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		
+		if endStr == "" {
+			endStr = time.Now().Format("2006-01-02")
+		}
+		if startStr == "" {
+			startStr = time.Now().AddDate(0, 0, -90).Format("2006-01-02")
+		}
 		_, _, err = utils.ValidateDateRange(startStr, endStr, 2000) // Relaxed range check since we have limit
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Invalid date range: %v", err)), nil
@@ -112,15 +116,7 @@ func RegisterPriceTools(s *server.MCPServer, c *client.NepseClient) {
 				volumes[i] = h.TotalTradedQuantity
 			}
 
-			// SMA calculations
-			sma10Start := n - 10
-			if sma10Start < 0 { sma10Start = 0 }
-			sma20Start := n - 20
-			if sma20Start < 0 { sma20Start = 0 }
-			sma10 := avgFloatSlice(closes[sma10Start:])
-			sma20 := avgFloatSlice(closes[sma20Start:])
-
-			// Volume average
+			// Structure facts (no oscillators: SMA/EMA/MACD describe mood, they don't decide)
 			avgVol := avgInt64Slice(volumes)
 
 			// Latest close
@@ -133,10 +129,11 @@ func RegisterPriceTools(s *server.MCPServer, c *client.NepseClient) {
 				if c > maxClose { maxClose = c }
 			}
 
-			// Trend detection
-			trend := "SIDEWAYS"
-			if sma10 > sma20*1.005 { trend = "BULLISH (10SMA > 20SMA)" }
-			if sma10 < sma20*0.995 { trend = "BEARISH (10SMA < 20SMA)" }
+			// 20-session gain: the pipeline's parabolic gate (HIGH-RISK if >+50%)
+			sessGain := 0.0
+			base := n - 21
+			if base < 0 { base = 0 }
+			if closes[base] > 0 { sessGain = (latest/closes[base] - 1) * 100 }
 
 			// Distance from period high
 			distFromHigh := 0.0
@@ -151,11 +148,10 @@ func RegisterPriceTools(s *server.MCPServer, c *client.NepseClient) {
 			}
 			volatility := stdDev(returns)
 
-			sb.WriteString("\n### Analysis\n")
-			sb.WriteString(fmt.Sprintf("- **Trend:** %s\n", trend))
-			sb.WriteString(fmt.Sprintf("- **10-SMA:** %s | **20-SMA:** %s\n", utils.FormatNumber(sma10), utils.FormatNumber(sma20)))
-			sb.WriteString(fmt.Sprintf("- **Period Range:** %s - %s (%.1f%% from high)\n", utils.FormatNumber(minClose), utils.FormatNumber(maxClose), distFromHigh))
-			sb.WriteString(fmt.Sprintf("- **Avg Volume:** %s | **Volatility:** %.2f%%\n", utils.FormatVolume(int64(avgVol)), volatility))
+			sb.WriteString("\n### Structure\n")
+			sb.WriteString(fmt.Sprintf("- **Sessions:** %d | **20-session gain:** %+.1f%% (>+50%% = parabolic, HIGH-RISK)\n", n, sessGain))
+			sb.WriteString(fmt.Sprintf("- **Period Range:** %s - %s (%.1f%% below period high)\n", utils.FormatNumber(minClose), utils.FormatNumber(maxClose), distFromHigh))
+			sb.WriteString(fmt.Sprintf("- **Avg Volume:** %s | **Volatility:** %.2f%%/day\n", utils.FormatVolume(int64(avgVol)), volatility))
 		}
 		
 		return mcp.NewToolResultText(sb.String()), nil
@@ -163,7 +159,7 @@ func RegisterPriceTools(s *server.MCPServer, c *client.NepseClient) {
 
 	// 2. get_market_depth
 	s.AddTool(mcp.NewTool("get_market_depth",
-		mcp.WithDescription("Bid/ask order book with quantities. Market hours only."),
+		mcp.WithDescription("Bid/ask order book with quantities. Params: symbol (required). Market hours only."),
 		mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol")),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		symbol, err := request.RequireString("symbol")
@@ -211,37 +207,30 @@ func RegisterPriceTools(s *server.MCPServer, c *client.NepseClient) {
 		return mcp.NewToolResultText(sb.String()), nil
 	})
 
-	// 3. get_floor_sheet
+	// 3. get_floor_sheet — per-symbol only. The market-wide sheet is a paginated
+	// full-day download (minutes during trading) to render <=20 rows, so
+	// symbol-less calls fail fast with pointers to the right tools instead.
 	s.AddTool(mcp.NewTool("get_floor_sheet",
-		mcp.WithDescription("Today's trade log (buyer/seller broker IDs, qty, rate). Market hours only. Multi-day flow: get_broker_floorsheet."),
-		mcp.WithString("symbol", mcp.Description("Filter by symbol")),
+		mcp.WithDescription("Trade log for ONE symbol (buyer/seller broker, qty, rate). Params: symbol (required), limit (default 20). Market hours only. Market-wide activity: get_top_list(type='turnover'|'volume'). Multi-day/broker views: get_broker_floorsheet."),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol")),
 		mcp.WithNumber("limit", mcp.Description("Max trades (default: 20)")),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		limit := request.GetInt("limit", 20)
-		symbol := request.GetString("symbol", "")
-		
-		var sheets []api.FloorSheetEntry
-		var err error
-
-		if symbol != "" {
-			if err := utils.ValidateSymbol(symbol); err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
-			sheets, err = c.GetFloorSheetBySymbol(symbol)
-		} else {
-			sheets, err = c.GetFloorSheet(limit)
+		symbol := strings.ToUpper(strings.TrimSpace(request.GetString("symbol", "")))
+		if symbol == "" {
+			return mcp.NewToolResultError("Market-wide trade log means downloading the full day's floor sheet (very slow). For activity use get_top_list(type='turnover'|'volume'); pass a symbol here for its trades; use get_broker_floorsheet for broker views."), nil
 		}
-		
+
+		if err := utils.ValidateSymbol(symbol); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		sheets, err := c.GetFloorSheetBySymbol(symbol)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Failed to fetch floor sheet (market hours only): %v", err)), nil
 		}
 
 		var sb strings.Builder
-		if symbol != "" {
-			sb.WriteString(fmt.Sprintf("**Floor Sheet for %s**\n\n", symbol))
-		} else {
-			sb.WriteString(fmt.Sprintf("**Market Floor Sheet** (Top %d)\n\n", limit))
-		}
+		sb.WriteString(fmt.Sprintf("**Floor Sheet for %s**\n\n", symbol))
 		
 		sb.WriteString("| Symbol | Buyer | Seller | Qty | Rate | Amount |\n")
 		sb.WriteString("|---|---|---|---|---|---|\n")

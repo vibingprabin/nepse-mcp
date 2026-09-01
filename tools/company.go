@@ -16,7 +16,7 @@ func RegisterSecurityTools(s *server.MCPServer, c *client.NepseClient, scripsPat
 
 	// 1. search_securities
 	s.AddTool(mcp.NewTool("search_securities",
-		mcp.WithDescription("Find companies by name, symbol, or sector."),
+		mcp.WithDescription("Find companies by name, symbol, or sector. Params: query, sector, limit (default 20)."),
 		mcp.WithString("query", mcp.Description("Symbol or name to search")),
 		mcp.WithString("sector", mcp.Description("e.g., 'Commercial Banks', 'Hydro Power'")),
 		mcp.WithNumber("limit", mcp.Description("Max results (default: 20)")),
@@ -59,7 +59,7 @@ func RegisterSecurityTools(s *server.MCPServer, c *client.NepseClient, scripsPat
 
 	// 2. get_security_details
 	s.AddTool(mcp.NewTool("get_security_details",
-		mcp.WithDescription("Full security profile: price snapshot, 52W range, fundamentals, Scrips.csv meta. Trends: get_price_history. Flow: analyze_broker_sentiment."),
+		mcp.WithDescription("Security quote. Params: symbol (required). LTP, 52W range, fundamentals, Scrips meta (50D vol). Trends: get_price_history(start_date, end_date)."),
 		mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol (e.g., NABIL)")),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		symbol := strings.ToUpper(request.GetString("symbol", ""))
@@ -91,8 +91,13 @@ func RegisterSecurityTools(s *server.MCPServer, c *client.NepseClient, scripsPat
 		sb.WriteString(fmt.Sprintf("- **52W High/Low:** %s / %s\n",
 			utils.FormatNumber(detail.FiftyTwoWeekHigh), utils.FormatNumber(detail.FiftyTwoWeekLow)))
 		if detail.FiftyTwoWeekHigh > 0 {
-			dist := ((detail.FiftyTwoWeekHigh - detail.LastTradedPrice) / detail.FiftyTwoWeekHigh) * 100
-			sb.WriteString(fmt.Sprintf("- **Distance from 52W High:** %.2f%%\n", dist))
+			if detail.LastTradedPrice >= detail.FiftyTwoWeekHigh {
+				sb.WriteString(fmt.Sprintf("- **52W position:** at/above 52W high (%s — new high territory)\n",
+					utils.FormatCurrency(detail.LastTradedPrice)))
+			} else {
+				dist := ((detail.FiftyTwoWeekHigh - detail.LastTradedPrice) / detail.FiftyTwoWeekHigh) * 100
+				sb.WriteString(fmt.Sprintf("- **Distance from 52W High:** %.2f%%\n", dist))
+			}
 		}
 		sb.WriteString("\n")
 

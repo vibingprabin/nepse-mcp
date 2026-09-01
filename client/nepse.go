@@ -39,18 +39,45 @@ func NewNepseClient(cfg *config.Config) *NepseClient {
 	}
 }
 
+// fetchWithRetry retries idempotent read calls against nepalstock.com.np.
+// The API intermittently returns truncated bodies ("http: ContentLength=10
+// with Body length 0") and connection resets; a short backoff usually gets
+// the data on the retry.
+func fetchWithRetry(fetchFunc func() (interface{}, error)) (interface{}, error) {
+	var lastErr error
+	backoff := []time.Duration{300 * time.Millisecond, 800 * time.Millisecond}
+	for attempt := 0; attempt <= len(backoff); attempt++ {
+		val, err := fetchFunc()
+		if err == nil {
+			return val, nil
+		}
+		lastErr = err
+		if attempt < len(backoff) {
+			time.Sleep(backoff[attempt])
+		}
+	}
+	return nil, lastErr
+}
+
 // getCached retrieves from cache or fetches using the provided function
 func (c *NepseClient) getCached(key string, fetchFunc func() (interface{}, error)) (interface{}, error) {
+	return c.getCachedWithTTL(key, cache.DefaultExpiration, fetchFunc)
+}
+
+// getCachedWithTTL is getCached with a per-key TTL. It exists because some
+// payloads are immutable while others track a live tape — one global TTL either
+// wastes round trips on history or serves stale quotes.
+func (c *NepseClient) getCachedWithTTL(key string, ttl time.Duration, fetchFunc func() (interface{}, error)) (interface{}, error) {
 	if val, found := c.cache.Get(key); found {
 		return val, nil
 	}
 
-	val, err := fetchFunc()
+	val, err := fetchWithRetry(fetchFunc)
 	if err != nil {
 		return nil, err
 	}
 
-	c.cache.Set(key, val, cache.DefaultExpiration)
+	c.cache.Set(key, val, ttl)
 	return val, nil
 }
 
@@ -80,12 +107,21 @@ func (c *NepseClient) GetMarketSummary() (*api.MarketSummary, error) {
 	return result.(*api.MarketSummary), nil
 }
 
-// GetMarketStatus returns current market open/close status
+// GetMarketStatus returns current market open/close status. Short TTL: the
+// flag flips at open/close, but get_market_summary calls this on every run and
+// an unconditional round trip per summary is pure latency.
 func (c *NepseClient) GetMarketStatus() (*api.MarketStatus, error) {
 	if err := c.checkClient(); err != nil {
 		return nil, err
 	}
-	return c.client.MarketStatus(context.Background())
+
+	result, err := c.getCachedWithTTL("market_status", 15*time.Second, func() (interface{}, error) {
+		return c.client.MarketStatus(context.Background())
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.(*api.MarketStatus), nil
 }
 
 // GetNepseIndex returns main NEPSE index data
@@ -158,19 +194,14 @@ func (c *NepseClient) GetCompanyList() ([]api.Company, error) {
 	if err := c.checkClient(); err != nil {
 		return nil, err
 	}
-	
-    cacheKey := "company_list"
-    if val, found := c.cache.Get(cacheKey); found {
-        return val.([]api.Company), nil
-    }
 
-    companies, err := c.client.Companies(context.Background())
-    if err != nil {
-        return nil, err
-    }
-
-    c.cache.Set(cacheKey, companies, 1*time.Hour)
-    return companies, nil
+	result, err := c.getCachedWithTTL("company_list", 1*time.Hour, func() (interface{}, error) {
+		return c.client.Companies(context.Background())
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.([]api.Company), nil
 }
 
 // GetSecurityDetail returns detailed information for a specific symbol
@@ -191,20 +222,26 @@ func (c *NepseClient) GetSecurityDetail(symbol string) (*api.SecurityDetail, err
 
 // --- Price & Trading ---
 
-// GetPriceHistory returns historical OHLCV data for a symbol
+// GetPriceHistory returns historical OHLCV data for a symbol. A range that
+// ended before today is immutable — it gets a day-long TTL instead of the
+// default 60s, so re-running a pipeline against the same history costs nothing.
 func (c *NepseClient) GetPriceHistory(symbol string, start, end string) ([]api.PriceHistory, error) {
 	if err := c.checkClient(); err != nil {
 		return nil, err
 	}
-	
-    cacheKey := fmt.Sprintf("history:%s:%s:%s", symbol, start, end)
-    result, err := c.getCached(cacheKey, func() (interface{}, error) {
-        return c.client.PriceHistoryBySymbol(context.Background(), symbol, start, end)
-    })
-    if err != nil {
-        return nil, err
-    }
-    return result.([]api.PriceHistory), nil
+
+	cacheKey := fmt.Sprintf("history:%s:%s:%s", symbol, start, end)
+	ttl := cache.DefaultExpiration
+	if end < time.Now().Format("2006-01-02") {
+		ttl = 24 * time.Hour
+	}
+	result, err := c.getCachedWithTTL(cacheKey, ttl, func() (interface{}, error) {
+		return c.client.PriceHistoryBySymbol(context.Background(), symbol, start, end)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.([]api.PriceHistory), nil
 }
 
 // GetMarketDepth returns order book data for a symbol
@@ -239,22 +276,24 @@ func (c *NepseClient) GetFloorSheet(limit int) ([]api.FloorSheetEntry, error) {
     return result.([]api.FloorSheetEntry), nil
 }
 
-// GetFloorSheetBySymbol returns floor sheet trades filtered by symbol
+// GetFloorSheetBySymbol returns floor sheet trades filtered by symbol.
+// The date is part of the cache key (computed outside the fetch func): a
+// date-less key would serve yesterday's sheet after midnight until the TTL ran out.
 func (c *NepseClient) GetFloorSheetBySymbol(symbol string) ([]api.FloorSheetEntry, error) {
 	if err := c.checkClient(); err != nil {
 		return nil, err
 	}
-	
-    cacheKey := fmt.Sprintf("floorsheet:%s", symbol)
-    result, err := c.getCached(cacheKey, func() (interface{}, error) {
-        loc, _ := time.LoadLocation("Asia/Kathmandu")
-        today := time.Now().In(loc).Format("2006-01-02")
-        return c.client.FloorSheetBySymbol(context.Background(), symbol, today)
-    })
-    if err != nil {
-        return nil, err
-    }
-    return result.([]api.FloorSheetEntry), nil
+
+	loc, _ := time.LoadLocation("Asia/Kathmandu")
+	today := time.Now().In(loc).Format("2006-01-02")
+	cacheKey := fmt.Sprintf("floorsheet:%s:%s", symbol, today)
+	result, err := c.getCached(cacheKey, func() (interface{}, error) {
+		return c.client.FloorSheetBySymbol(context.Background(), symbol, today)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.([]api.FloorSheetEntry), nil
 }
 
 // --- Top Lists ---

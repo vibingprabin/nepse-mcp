@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -16,7 +17,21 @@ type Client struct {
 	BaseURL    string
 	UserAgent  string
 	HTTPClient *http.Client
+
+	mu    sync.Mutex
+	cache map[string]cachedData
 }
+
+type cachedData struct {
+	data *CompanyData
+	at   time.Time
+}
+
+// The LLNMP instrument endpoint is heavy (~1MB of embedded charts we never
+// render, ~4.5s per fetch) and its fundamentals update at most daily, so
+// repeated calls for the same symbol are cached. 15min keeps the LTP in the
+// facts block fresh enough while turning repeat reads into ~0ms.
+const cacheTTL = 15 * time.Minute
 
 // NewClient creates a company data client pointing at the LLNMP endpoint.
 func NewClient() *Client {
@@ -31,23 +46,24 @@ func NewClient() *Client {
 				TLSHandshakeTimeout: 10 * time.Second,
 			},
 		},
+		cache: make(map[string]cachedData),
 	}
 }
 
 // CompanyData is the top-level response from /llnmp/v1/instrument?type=company.
 type CompanyData struct {
-	Type              string              `json:"type"`
-	Key               string              `json:"key"`
-	Title             string              `json:"title"`
-	Subtitle          string              `json:"subtitle"`
-	Facts             []Fact              `json:"facts"`
-	Fundamentals      []FundamentalItem  `json:"fundamentals"`
-	FundamentalTrends *FundamentalTrend  `json:"fundamentalTrends"`
-	Timeline          []TimelineEvent    `json:"timeline"`
-	BrokerURL         string              `json:"brokerUrl"`
-	EntityID          interface{}         `json:"entityId"`
-	FundamentalsURL   string              `json:"fundamentalsUrl"`
-	Chart             []json.RawMessage   `json:"chart"`
+	Type              string            `json:"type"`
+	Key               string            `json:"key"`
+	Title             string            `json:"title"`
+	Subtitle          string            `json:"subtitle"`
+	Facts             []Fact            `json:"facts"`
+	Fundamentals      []FundamentalItem `json:"fundamentals"`
+	FundamentalTrends *FundamentalTrend `json:"fundamentalTrends"`
+	Timeline          []TimelineEvent   `json:"timeline"`
+	BrokerURL         string            `json:"brokerUrl"`
+	EntityID          interface{}       `json:"entityId"`
+	FundamentalsURL   string            `json:"fundamentalsUrl"`
+	Chart             []json.RawMessage `json:"chart"`
 }
 
 type Fact struct {
@@ -151,6 +167,13 @@ func parseFloat(s string) (float64, error) {
 // GetCompanyData fetches the full company profile from LLNMP.
 func (c *Client) GetCompanyData(symbol string) (*CompanyData, error) {
 	symbol = strings.ToUpper(strings.TrimSpace(symbol))
+	c.mu.Lock()
+	if cd, ok := c.cache[symbol]; ok && time.Since(cd.at) < cacheTTL {
+		c.mu.Unlock()
+		return cd.data, nil
+	}
+	c.mu.Unlock()
+
 	url := fmt.Sprintf("%s/instrument?type=company&key=%s", c.BaseURL, symbol)
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -182,6 +205,9 @@ func (c *Client) GetCompanyData(symbol string) (*CompanyData, error) {
 	if err := json.Unmarshal(body, &data); err != nil {
 		return nil, fmt.Errorf("parsing %s response: %w", symbol, err)
 	}
+	c.mu.Lock()
+	c.cache[symbol] = cachedData{data: &data, at: time.Now()}
+	c.mu.Unlock()
 	return &data, nil
 }
 

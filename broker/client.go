@@ -34,11 +34,16 @@ var nonceGroup singleflight.Group
 var requestSem = make(chan struct{}, 20)
 
 const (
-	nonceLifespan       = 10 * time.Hour // WP nonces live 12-24h; refresh early
-	companiesCacheTTL   = 1 * time.Hour
-	defaultAttemptTimeout = 45 * time.Second
-	floorsheetTimeout   = 150 * time.Second // long-history type=all replays are slow
-	maxRetries          = 3
+	nonceLifespan         = 10 * time.Hour // WP nonces live 12-24h; refresh early
+	companiesCacheTTL     = 1 * time.Hour
+	positionCacheTTL      = 1 * time.Hour
+	// Windows that ended before today are deterministic (verified live: the
+	// floorsheet replay for a closed range never changes), so they can be held
+	// far longer than a hot window whose last day is still trading.
+	positionClosedWindowTTL = 24 * time.Hour
+	defaultAttemptTimeout   = 45 * time.Second
+	floorsheetTimeout       = 150 * time.Second // long-history type=all replays are slow
+	maxRetries              = 3
 )
 
 // The WordPress API inconsistently returns the same field as a string on one
@@ -298,6 +303,21 @@ type Client struct {
 	compMu    sync.RWMutex
 	companies *CompanyList
 	compAt    time.Time
+
+	posMu sync.RWMutex
+	pos   map[string]cachedPositionSet
+
+	// posGroup collapses concurrent GetPositionSet calls for the same window
+	// into one upstream fetch, the way nonceGroup does for nonce refreshes.
+	posGroup singleflight.Group
+}
+
+// cachedPositionSet is a per-symbol+range position set. Floorsheet data is
+// deterministic for a fixed window (verified live), so caching turns repeated
+// 2-7s calls into ~0ms.
+type cachedPositionSet struct {
+	ps *PositionSet
+	at time.Time
 }
 
 func NewClient() *Client {
@@ -319,14 +339,25 @@ func NewClient() *Client {
 			Jar:       jar,
 			Transport: transport,
 		},
+		pos: make(map[string]cachedPositionSet),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := c.FetchNonce(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "[Broker] nonce fetch failed, using env fallback: %v\n", err)
-		c.nonce = getEnv("BROKER_API_TOKEN", "")
-	}
+	// Warm the nonce in the BACKGROUND instead of blocking server startup for
+	// up to 30s: doJSON self-heals an empty/stale nonce via its forced-refresh
+	// path on 403, so an unwarmed client only costs one extra round trip on
+	// the very first broker call. A slow or down site can no longer delay boot.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := c.FetchNonce(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "[Broker] nonce prefetch failed; will retry on demand via 403 path: %v\n", err)
+			c.nonceMutex.Lock()
+			if c.nonce == "" {
+				c.nonce = getEnv("BROKER_API_TOKEN", "")
+			}
+			c.nonceMutex.Unlock()
+		}
+	}()
 
 	return c
 }
@@ -542,7 +573,38 @@ func isRetryable(status int) bool {
 // GetPositionSet fetches all five broker views in one type=all request. On
 // repeated transport failure it fans out five concurrent single-view requests
 // and merges whatever succeeds, so a single broken endpoint never kills analysis.
+//
+// Caching is tiered: windows ending before today are immutable and cached for
+// 24h; a window that includes today expires hourly. Concurrent callers asking
+// for the same window share one upstream replay via singleflight.
 func (c *Client) GetPositionSet(ctx context.Context, symbol, fromDate, toDate string) (*PositionSet, error) {
+	key := symbol + "|" + fromDate + "|" + toDate
+
+	// YYYY-MM-DD strings compare correctly lexicographically — no TZ math needed.
+	ttl := positionCacheTTL
+	if toDate < time.Now().Format("2006-01-02") {
+		ttl = positionClosedWindowTTL
+	}
+
+	c.posMu.RLock()
+	if cp, ok := c.pos[key]; ok && time.Since(cp.at) < ttl {
+		c.posMu.RUnlock()
+		return cp.ps, nil
+	}
+	c.posMu.RUnlock()
+
+	v, err, _ := c.posGroup.Do(key, func() (interface{}, error) {
+		return c.fetchPositionSet(ctx, symbol, fromDate, toDate, key)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*PositionSet), nil
+}
+
+// fetchPositionSet performs the type=all call (with the single-view fallback),
+// stores the result under key, and prunes expired entries to bound memory.
+func (c *Client) fetchPositionSet(ctx context.Context, symbol, fromDate, toDate, key string) (*PositionSet, error) {
 	params := url.Values{}
 	params.Set("symbol", symbol)
 	params.Set("from_date", fromDate)
@@ -552,11 +614,34 @@ func (c *Client) GetPositionSet(ctx context.Context, symbol, fromDate, toDate st
 	var resp floorsheetAllResponse
 	err := c.doJSON(ctx, "floorsheet", params, floorsheetTimeout, &resp)
 	if err == nil {
-		return &PositionSet{Data: resp.Data, Meta: resp.Meta, Source: "all"}, nil
+		ps := &PositionSet{Data: resp.Data, Meta: resp.Meta, Source: "all"}
+		c.storePositionSet(key, ps)
+		return ps, nil
 	}
 
 	fmt.Fprintf(os.Stderr, "[Broker] type=all failed for %s (%v), trying single-view fallback\n", symbol, err)
-	return c.getPositionSetFallback(ctx, symbol, fromDate, toDate)
+	ps, err := c.getPositionSetFallback(ctx, symbol, fromDate, toDate)
+	if err != nil {
+		return nil, err
+	}
+	c.storePositionSet(key, ps)
+	return ps, nil
+}
+
+// storePositionSet saves one entry and evicts anything older than the longest
+// TTL ever served. Without this the pos map grew without bound: every distinct
+// symbol|range stayed forever, and long screening sessions scanning many names
+// and windows accumulated full PositionSets.
+func (c *Client) storePositionSet(key string, ps *PositionSet) {
+	now := time.Now()
+	c.posMu.Lock()
+	c.pos[key] = cachedPositionSet{ps: ps, at: now}
+	for k, cp := range c.pos {
+		if now.Sub(cp.at) > positionClosedWindowTTL {
+			delete(c.pos, k)
+		}
+	}
+	c.posMu.Unlock()
 }
 
 func (c *Client) getPositionSetFallback(ctx context.Context, symbol, fromDate, toDate string) (*PositionSet, error) {

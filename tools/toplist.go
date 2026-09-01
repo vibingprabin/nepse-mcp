@@ -16,10 +16,10 @@ func RegisterTopListTools(s *server.MCPServer, c *client.NepseClient) {
 
 	// Consolidated top list tool
 	s.AddTool(mcp.NewTool("get_top_list",
-		mcp.WithDescription("Top securities by category."),
+		mcp.WithDescription("Top securities. Params: type (required: 'gainers'|'losers'|'turnover'|'volume'|'transactions'), limit (default 10, max 500)."),
 		mcp.WithString("type", 
 			mcp.Required(), 
-			mcp.Description("'gainers', 'losers', 'turnover', 'volume', or 'transactions'")),
+			mcp.Description("'gainers', 'losers', 'turnover', 'volume', 'transactions'")),
 		mcp.WithNumber("limit", mcp.Description("Max results (default: 10)")),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		listType := request.GetString("type", "gainers")

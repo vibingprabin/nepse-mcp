@@ -17,7 +17,7 @@ func RegisterGraphTools(s *server.MCPServer, c *client.NepseClient) {
 
 	// Merged: get_nepse_index_graph + get_security_graph → get_intraday_graph
 	s.AddTool(mcp.NewTool("get_intraday_graph",
-		mcp.WithDescription("Intraday OHLC + trend. Omit symbol for NEPSE index. format=points adds ~20 sampled points."),
+		mcp.WithDescription("Intraday OHLC + trend. Params: symbol (omit for NEPSE index), format ('summary' default | 'points' adds ~20 samples)."),
 		mcp.WithString("symbol", mcp.Description("Stock symbol. Omit for NEPSE index.")),
 		mcp.WithString("format", mcp.Description("'summary' (default) or 'points'")),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -118,7 +118,7 @@ func RegisterGraphTools(s *server.MCPServer, c *client.NepseClient) {
 		sb.WriteString(fmt.Sprintf("**%s Intraday**\n", label))
 		sb.WriteString(fmt.Sprintf("Open: %s | High: %s | Low: %s | Close: %s\n",
 			utils.FormatNumber(open), utils.FormatNumber(high), utils.FormatNumber(low), utils.FormatNumber(close)))
-		sb.WriteString(fmt.Sprintf("Change: %s (%s) | VWAP: %s | Trend: %s\n",
+		sb.WriteString(fmt.Sprintf("Change vs Open: %s (%s) | VWAP: %s | Trend: %s\n",
 			utils.FormatNumber(change), utils.FormatPercentage(changePct), utils.FormatNumber(vwap), trend))
 		sb.WriteString(fmt.Sprintf("Range: %s (%.2f%%)\n", utils.FormatNumber(high-low), ((high-low)/low)*100))
 

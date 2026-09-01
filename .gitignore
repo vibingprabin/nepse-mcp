@@ -5,3 +5,8 @@ stdout*.txt
 stderr*.txt
 stockofinterest.csv
 .sisyphus/
+cgm_traces.json
+*.bak
+*.cgm-old
+*.flat-backup
+*.old-default

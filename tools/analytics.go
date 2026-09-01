@@ -7,6 +7,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	api "github.com/voidarchive/go-nepse"
 	"vibinprabin/nepse-mcp/client"
 	"vibinprabin/nepse-mcp/utils"
 )
@@ -15,8 +16,8 @@ func RegisterAnalyticsTools(s *server.MCPServer, c *client.NepseClient) {
 
 	// 1. compare_securities
 	s.AddTool(mcp.NewTool("compare_securities",
-		mcp.WithDescription("Side-by-side: LTP, change, volume, market cap, 52W range. Max 5 symbols."),
-		mcp.WithString("symbols", mcp.Required(), mcp.Description("Comma-separated symbols (e.g., NABIL,SCB,NICA). Max 5.")),
+		mcp.WithDescription("Compare 2-5 symbols. Params: symbols (required, comma-separated, max 5). LTP, change, volume, mkt cap, 52W range."),
+		mcp.WithString("symbols", mcp.Required(), mcp.Description("Comma-separated stock symbols (max 5)")),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		symbolsStr, err := request.RequireString("symbols")
 		if err != nil {
@@ -39,22 +40,49 @@ func RegisterAnalyticsTools(s *server.MCPServer, c *client.NepseClient) {
 			}
 		}
 
-		// Fetch details for all symbols
+		// Fetch details for all symbols in parallel
 		type CompareData struct {
-			Symbol      string
-			LTP         float64
-			Change      float64
-			Volume      int64
-			MarketCap   float64
+			Symbol       string
+			LTP          float64
+			Change       float64
+			Volume       int64
+			MarketCap    float64
 			FiftyTwoHigh float64
 			FiftyTwoLow  float64
 		}
 
+		type fetchResult struct {
+			index  int
+			detail *api.SecurityDetail
+			err    error
+		}
+
+		results := make(chan fetchResult, len(symbols))
+		for i, sym := range symbols {
+			go func(i int, sym string) {
+				d, err := c.GetSecurityDetail(sym)
+				results <- fetchResult{index: i, detail: d, err: err}
+			}(i, sym)
+		}
+
+		details := make([]*api.SecurityDetail, len(symbols))
+		var failures []string
+		for range symbols {
+			r := <-results
+			if r.err != nil {
+				failures = append(failures, fmt.Sprintf("%s: %v", symbols[r.index], r.err))
+			}
+			details[r.index] = r.detail
+		}
+		if len(failures) == len(symbols) {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to fetch all securities: %v", failures[0])), nil
+		}
+
 		var compareList []CompareData
-		for _, sym := range symbols {
-			detail, err := c.GetSecurityDetail(sym)
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Failed to fetch %s: %v", sym, err)), nil
+		for i := range symbols {
+			detail := details[i]
+			if detail == nil {
+				continue // reported in the failures note below
 			}
 
 			// Calculate percentage change
@@ -64,11 +92,11 @@ func RegisterAnalyticsTools(s *server.MCPServer, c *client.NepseClient) {
 			}
 
 			compareList = append(compareList, CompareData{
-				Symbol:      detail.Symbol,
-				LTP:         detail.LastTradedPrice,
-				Change:      changePercent,
-				Volume:      detail.TotalTradedQuantity,
-				MarketCap:   detail.MarketCap,
+				Symbol:       detail.Symbol,
+				LTP:          detail.LastTradedPrice,
+				Change:       changePercent,
+				Volume:       detail.TotalTradedQuantity,
+				MarketCap:    detail.MarketCap,
 				FiftyTwoHigh: detail.FiftyTwoWeekHigh,
 				FiftyTwoLow:  detail.FiftyTwoWeekLow,
 			})
@@ -91,132 +119,17 @@ func RegisterAnalyticsTools(s *server.MCPServer, c *client.NepseClient) {
 			))
 		}
 
-		return mcp.NewToolResultText(sb.String()), nil
-	})
-
-	// 2. screen_stocks
-	s.AddTool(mcp.NewTool("screen_stocks",
-		mcp.WithDescription("Filter stocks by sector, volume, % change. Uses live feed — market hours only."),
-		mcp.WithString("sector", mcp.Description("e.g., 'Commercial Banks', 'Hydro Power'")),
-		mcp.WithNumber("min_volume", mcp.Description("Min traded volume")),
-		mcp.WithNumber("min_change", mcp.Description("Min % change")),
-		mcp.WithNumber("max_change", mcp.Description("Max % change")),
-		mcp.WithNumber("limit", mcp.Description("Max results (default: 20)")),
-	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		sector := request.GetString("sector", "")
-		minVolume := int64(request.GetInt("min_volume", 0))
-		minChange := request.GetFloat("min_change", -999999)
-		maxChange := request.GetFloat("max_change", 999999)
-		limit := request.GetInt("limit", 20)
-
-		// Get live market data
-		liveData, err := c.GetLiveMarket()
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to fetch market data: %v", err)), nil
-		}
-
-		// Get company list for sector filtering
-		var sectorMap map[string]string
-		if sector != "" {
-			companies, err := c.GetCompanyList()
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Failed to fetch company list: %v", err)), nil
-			}
-			sectorMap = make(map[string]string)
-			for _, comp := range companies {
-				sectorMap[comp.Symbol] = comp.SectorName
-			}
-		}
-
-		// Apply filters
-		var filtered []struct {
-			Symbol  string
-			LTP     float64
-			Change  float64
-			Volume  int64
-			Sector  string
-		}
-
-		sectorUpper := strings.ToUpper(sector)
-		for _, item := range liveData {
-			// Sector filter
-			if sector != "" {
-				itemSector, ok := sectorMap[item.Symbol]
-				if !ok || !strings.Contains(strings.ToUpper(itemSector), sectorUpper) {
-					continue
-				}
-			}
-
-			// Volume filter
-			if item.TotalTradeQuantity < minVolume {
-				continue
-			}
-
-			// Change filters
-			if item.PercentageChange < minChange || item.PercentageChange > maxChange {
-				continue
-			}
-
-			itemSector := ""
-			if sectorMap != nil {
-				itemSector = sectorMap[item.Symbol]
-			}
-
-			filtered = append(filtered, struct {
-				Symbol  string
-				LTP     float64
-				Change  float64
-				Volume  int64
-				Sector  string
-			}{
-				Symbol: item.Symbol,
-				LTP:    item.LastTradedPrice,
-				Change: item.PercentageChange,
-				Volume: item.TotalTradeQuantity,
-				Sector: itemSector,
-			})
-
-			if len(filtered) >= limit {
-				break
-			}
-		}
-
-		if len(filtered) == 0 {
-			return mcp.NewToolResultText("No stocks match the specified criteria."), nil
-		}
-
-		var sb strings.Builder
-		sb.WriteString("# Stock Screener Results\n\n")
-		
-		// Show active filters
-		sb.WriteString("**Active Filters:**\n")
-		if sector != "" {
-			sb.WriteString(fmt.Sprintf("- Sector: %s\n", sector))
-		}
-		if minVolume > 0 {
-			sb.WriteString(fmt.Sprintf("- Min Volume: %s\n", utils.FormatVolume(minVolume)))
-		}
-		if minChange > -999999 {
-			sb.WriteString(fmt.Sprintf("- Min Change: %.2f%%\n", minChange))
-		}
-		if maxChange < 999999 {
-			sb.WriteString(fmt.Sprintf("- Max Change: %.2f%%\n", maxChange))
-		}
-		sb.WriteString(fmt.Sprintf("\n**Results: %d stocks**\n\n", len(filtered)))
-
-		sb.WriteString("| Symbol | LTP | Change % | Volume | Sector |\n")
-		sb.WriteString("|---|---|---|---|---|\n")
-
-		for _, item := range filtered {
-			sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
-				item.Symbol,
-				utils.FormatCurrency(item.LTP),
-				utils.FormatPercentage(item.Change),
-				utils.FormatVolume(item.Volume),
-				item.Sector,
-			))
+		if len(failures) > 0 {
+			sb.WriteString("\n_Unavailable (fetch failed after retries): ")
+			sb.WriteString(strings.Join(failures, "; "))
+			sb.WriteString("_")
 		}
 
 		return mcp.NewToolResultText(sb.String()), nil
 	})
+
+	// 2. screen_stocks — REMOVED: strictly weaker than get_movers_screen
+	// (same live-feed source, fewer signals) and market-hours-only. The
+	// movers screen plus get_top_list cover every query it served. Recoverable
+	// from git history if ever needed.
 }

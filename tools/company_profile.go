@@ -13,8 +13,9 @@ import (
 )
 
 func RegisterCompanyProfileTools(s *server.MCPServer) {
+	cc := company.NewClient()
 	s.AddTool(mcp.NewTool("get_company_profile",
-		mcp.WithDescription("Full company profile: facts (LTP, EPS, P/E, BV, PBV, 52W range, market cap, shares), fundamentals (26 sector-specific metrics: ROA, ROE, NPL, CD ratio, Base Rate, Capital Fund, DPS, EPS, NetProfit, NII etc), fundamental trends (5-period EPS/NII/NetProfit), and corporate actions (bonus, cash dividend, right, FPO, merger) with dates and percents. One call per stock."),
+		mcp.WithDescription("Company profile. Params: symbol (required). Facts (LTP, EPS, P/E, BV, PBV, 52W, mkt cap), fundamentals per period, 5-period trends, corporate actions (bonus/div/right/FPO/merger). One call per stock."),
 		mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol (e.g., NABIL)")),
 	), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		symbol := strings.ToUpper(strings.TrimSpace(request.GetString("symbol", "")))
@@ -22,12 +23,10 @@ func RegisterCompanyProfileTools(s *server.MCPServer) {
 			return mcp.NewToolResultError("Symbol is required"), nil
 		}
 
-		cc := company.NewClient()
 		data, err := cc.GetCompanyData(symbol)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Failed to fetch profile for %s: %v", symbol, err)), nil
 		}
-
 		var sb strings.Builder
 		fmt.Fprintf(&sb, "# %s — %s\n", data.Key, data.Subtitle)
 		sb.WriteString("\n")
@@ -37,6 +36,12 @@ func RegisterCompanyProfileTools(s *server.MCPServer) {
 		fm := data.FactsMap()
 		for _, key := range []string{"ltp", "eps", "p/e", "book value", "pbv", "market cap", "paid-up capital", "listed shares", "public shares", "promoter shares", "52 week high low", "high low price", "all time high", "all time low", "float market cap"} {
 			if v, ok := fm[key]; ok && v != "" && v != "-" {
+				if key == "ltp" && (v == "0" || v == "0.00" || strings.HasPrefix(v, "0 ")) {
+					v = "—" + strings.TrimPrefix(v, "0")
+					if v == "—" {
+						v = "— (no fresh quote)"
+					}
+				}
 				sb.WriteString(fmt.Sprintf("| %s | %s |\n", titleCase(key), v))
 			}
 		}
